@@ -676,8 +676,18 @@ K2PatchData parse_k2_patch_data(std::span<const std::byte> bytes,
                 block.begin() + static_cast<std::ptrdiff_t>(produced));
     }
     inflateEnd(&stream);
-    if (status != Z_STREAM_END || stream.avail_in != 0) {
-        throw std::runtime_error("invalid or trailing K2 zlib payload");
+
+    if (status != Z_STREAM_END) {
+        throw std::runtime_error(
+                "K2 zlib inflate failed: status=" +
+                std::to_string(status) + ", remaining input=" +
+                std::to_string(stream.avail_in));
+    }
+    if (stream.avail_in != 0) {
+        std::fprintf(stderr,
+                "DEBUG K2 trailing bytes=%u decompressed bytes=%zu\n",
+                static_cast<unsigned>(stream.avail_in),
+                out.decompressed.size());
     }
     parse_k2_tag_stream(out);
     return out;
@@ -710,8 +720,8 @@ std::uint32_t k2_product_id(std::span<const std::byte> bytes) {
     const auto hundreds = (remainder >> 2U) / 25U;
     remainder -= hundreds * 100U;
     const auto tens = remainder / 10U;
-    return (thousands << 12U) | ((hundreds * 5243U >> 9U) & 0xff00U) |
-           ((tens * 205U >> 7U) & 0xf0U) | (remainder - tens * 10U);
+    return (thousands << 12U) | (hundreds << 8U) | (tens << 4U) |
+           (remainder - tens * 10U);
 }
 
 bool k2_legacy_otp_encrypted(std::span<const std::byte> bytes) {
